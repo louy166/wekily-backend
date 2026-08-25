@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    container_name: wekily-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: mysql:8.0
+    container_name: wekily-db
+    environment:
+      - MYSQL_DATABASE=infosoft_transd
+      - MYSQL_USER=infosoft_10872
+      - MYSQL_PASSWORD=Mok065681325
+      - MYSQL_ROOT_PASSWORD=Mok065681325
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
