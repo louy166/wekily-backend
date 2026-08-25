@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>وكيلي — لوحة الإدارة</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.1/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #3A63F5; --primary-light: #EEF0FF;
+            --dark: #1E2A45; --gray: #9AA3BE; --border: #E8ECF5;
+            --green: #00A362; --red: #E03030; --orange: #F5A623;
+            --bg: #F7F8FC; --sidebar-w: 260px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); color: var(--dark); }
+
+        /* ── LOGIN ─────────────────────────────────────────── */
+        #loginPage {
+            min-height: 100vh; display: flex; align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--primary) 0%, #1E2A45 100%);
+        }
+        .login-card {
+            background: white; border-radius: 24px; padding: 48px 40px;
+            width: 420px; box-shadow: 0 24px 64px rgba(0,0,0,0.2);
+        }
+        .login-logo { font-size: 32px; font-weight: 900; color: var(--primary); margin-bottom: 8px; }
+        .login-sub  { color: var(--gray); font-size: 14px; margin-bottom: 32px; }
+
+        /* ── SIDEBAR ───────────────────────────────────────── */
+        #app { display: none; min-height: 100vh; }
+        .sidebar {
+            position: fixed; top: 0; right: 0; bottom: 0;
+            width: var(--sidebar-w); background: var(--dark);
+            display: flex; flex-direction: column; z-index: 100;
+            box-shadow: -4px 0 24px rgba(0,0,0,0.15);
+        }
+        .sidebar-logo {
+            padding: 28px 24px 20px; border-bottom: 1px solid rgba(255,255,255,0.08);
+            font-size: 22px; font-weight: 900; color: white;
+        }
+        .sidebar-logo span { color: var(--primary); }
+        .sidebar-label { font-size: 10px; color: rgba(255,255,255,0.35); padding: 20px 24px 8px; text-transform: uppercase; letter-spacing: 1.5px; }
+        .nav-item { display: flex; align-items: center; gap: 12px; padding: 14px 24px; color: rgba(255,255,255,0.65); cursor: pointer; transition: all .2s; font-size: 14px; font-weight: 500; text-decoration: none; border-right: 3px solid transparent; }
+        .nav-item:hover  { background: rgba(255,255,255,0.06); color: white; }
+        .nav-item.active { background: rgba(58,99,245,0.15); color: white; border-right-color: var(--primary); }
+        .nav-item i { font-size: 18px; }
+        .sidebar-footer { margin-top: auto; padding: 16px 24px; border-top: 1px solid rgba(255,255,255,0.08); }
+
+        /* ── MAIN ──────────────────────────────────────────── */
+        .main { margin-right: var(--sidebar-w); padding: 32px; min-height: 100vh; }
+        .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
+        .page-title  { font-size: 24px; font-weight: 800; }
+        .page-sub    { font-size: 13px; color: var(--gray); margin-top: 4px; }
+        .topbar-right { display: flex; align-items: center; gap: 12px; }
+        .admin-badge { background: var(--primary-light); color: var(--primary); border-radius: 20px; padding: 6px 16px; font-size: 13px; font-weight: 600; }
+
+        /* ── CARDS ─────────────────────────────────────────── */
+        .stat-card { background: white; border-radius: 18px; padding: 24px; border: 1px solid var(--border); }
+        .stat-icon { width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 22px; margin-bottom: 16px; }
+        .stat-val { font-size: 28px; font-weight: 900; }
+        .stat-lbl { font-size: 13px; color: var(--gray); margin-top: 4px; }
+
+        /* ── TABLE ─────────────────────────────────────────── */
+        .panel { background: white; border-radius: 18px; border: 1px solid var(--border); overflow: hidden; }
+        .panel-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+        .panel-title  { font-size: 16px; font-weight: 700; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: var(--bg); padding: 14px 20px; text-align: right; font-size: 12px; color: var(--gray); font-weight: 600; }
+        td { padding: 16px 20px; text-align: right; font-size: 14px; border-top: 1px solid var(--border); vertical-align: middle; }
+        tr:hover td { background: #FAFBFF; }
+
+        /* ── BADGES ────────────────────────────────────────── */
+        .badge-active  { background: #E6FAF0; color: var(--green); border-radius: 8px; padding: 4px 12px; font-size: 12px; font-weight: 600; }
+        .badge-blocked { background: #FFF0F0; color: var(--red);   border-radius: 8px; padding: 4px 12px; font-size: 12px; font-weight: 600; }
+        .badge-bank    { background: var(--primary-light); color: var(--primary); border-radius: 8px; padding: 4px 12px; font-size: 12px; font-weight: 600; }
+
+        /* ── BUTTONS ───────────────────────────────────────── */
+        .btn-primary-sm  { background: var(--primary); color: white; border: none; border-radius: 10px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; }
+        .btn-danger-sm   { background: #FFF0F0; color: var(--red);   border: 1px solid #FFD0D0; border-radius: 10px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+        .btn-success-sm  { background: #E6FAF0; color: var(--green); border: 1px solid #BBF7D0; border-radius: 10px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+        .btn-edit-sm     { background: #FFF8F0; color: var(--orange); border: 1px solid #FFD580; border-radius: 10px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+        /* ── MODAL ─────────────────────────────────────────── */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1000; display: none; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: white; border-radius: 20px; padding: 32px; width: 480px; max-width: 95vw; box-shadow: 0 24px 64px rgba(0,0,0,0.2); }
+        .modal-title { font-size: 18px; font-weight: 800; margin-bottom: 24px; }
+        .form-label  { font-size: 13px; color: var(--gray); font-weight: 600; margin-bottom: 6px; }
+        .form-control { border: 1.5px solid var(--border); border-radius: 12px; padding: 12px 14px; font-size: 14px; width: 100%; color: var(--dark); }
+        .form-control:focus { outline: none; border-color: var(--primary); }
+
+        /* ── SEARCH ────────────────────────────────────────── */
+        .search-box { position: relative; }
+        .search-box input { padding-right: 40px; }
+        .search-icon { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--gray); }
+
+        /* ── TOAST ─────────────────────────────────────────── */
+        .toast { position: fixed; bottom: 24px; left: 24px; background: var(--dark); color: white; border-radius: 14px; padding: 14px 24px; font-size: 14px; font-weight: 600; z-index: 9999; opacity: 0; transform: translateY(20px); transition: all .3s; pointer-events: none; }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.success { background: var(--green); }
+        .toast.error   { background: var(--red);   }
+
+        .page { display: none; }
+        .page.active { display: block; }
+        .online-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; margin-left: 6px; }
+    </style>
+</head>
+<body>
+
+<div id="loginPage">
+    <div class="login-card">
+        <div class="login-logo">وكيلي</div>
+        <div class="login-sub">لوحة تحكم الإدارة</div>
+        <div id="loginErr" class="alert alert-danger d-none mb-3" style="border-radius:12px;font-size:13px;"></div>
+        <div class="mb-3">
+            <label class="form-label">اسم المستخدم</label>
+            <input id="loginUser" type="text" class="form-control" placeholder="admin" value="admin">
+        </div>
+        <div class="mb-4">
+            <label class="form-label">كلمة المرور</label>
+            <input id="loginPass" type="password" class="form-control" placeholder="••••••••">
+        </div>
+        <button class="btn-primary-sm w-100 py-3" style="border-radius:14px;font-size:15px;" onclick="doLogin()">
+            <i class="bi bi-box-arrow-in-right me-2"></i>تسجيل الدخول
+        </button>
+    </div>
+</div>
+
+<div id="app">
+
+    <nav class="sidebar">
+        <div class="sidebar-logo">وكيلي <span>Admin</span></div>
+        <div class="sidebar-label">القائمة الرئيسية</div>
+        <a class="nav-item active" onclick="showPage('dashboard')"><i class="bi bi-grid-fill"></i>لوحة التحكم</a>
+        <a class="nav-item" onclick="showPage('agents')"><i class="bi bi-people-fill"></i>إدارة الوكلاء</a>
+        <a class="nav-item" onclick="showPage('banks')"><i class="bi bi-bank2"></i>إدارة البنوك</a>
+        <a class="nav-item" onclick="showPage('tiers')"><i class="bi bi-table"></i>الشرائح والعمولات</a>
+        <div class="sidebar-footer">
+            <a class="nav-item" style="padding:12px 0;color:rgba(255,255,255,0.5)" onclick="doLogout()">
+                <i class="bi bi-box-arrow-right"></i>تسجيل الخروج
+            </a>
+        </div>
+    </nav>
+
+    <div class="main">
+
+        <div id="pg-dashboard" class="page active">
+            <div class="topbar">
+                <div><div class="page-title">لوحة التحكم <span class="online-dot"></span></div><div class="page-sub">مرحباً بك في لوحة إدارة وكيلي</div></div>
+                <div class="admin-badge"><i class="bi bi-shield-check me-1"></i>مدير النظام</div>
+            </div>
+            <div class="row g-3 mb-4" id="statsRow">
+                <div class="col-md-3"><div class="stat-card"><div class="stat-icon" style="background:#EEF0FF"><i class="bi bi-people" style="color:var(--primary)"></i></div><div class="stat-val" id="s-agents">—</div><div class="stat-lbl">إجمالي الوكلاء</div></div></div>
+                <div class="col-md-3"><div class="stat-card"><div class="stat-icon" style="background:#E6FAF0"><i class="bi bi-check-circle" style="color:var(--green)"></i></div><div class="stat-val" id="s-active">—</div><div class="stat-lbl">وكلاء نشطون</div></div></div>
+                <div class="col-md-3"><div class="stat-card"><div class="stat-icon" style="background:#FFF0F0"><i class="bi bi-slash-circle" style="color:var(--red)"></i></div><div class="stat-val" id="s-blocked">—</div><div class="stat-lbl">وكلاء محظورون</div></div></div>
+                <div class="col-md-3"><div class="stat-card"><div class="stat-icon" style="background:#FFF8F0"><i class="bi bi-bank2" style="color:var(--orange)"></i></div><div class="stat-val" id="s-banks">—</div><div class="stat-lbl">البنوك المسجلة</div></div></div>
+            </div>
+            <div class="panel">
+                <div class="panel-header"><span class="panel-title">آخر نشاط الوكلاء</span></div>
+                <table><thead><tr><th>الاسم</th><th>الهاتف</th><th>المدينة</th><th>الحالة</th></tr></thead>
+                    <tbody id="dashAgents"></tbody></table>
+            </div>
+        </div>
+
+        <div id="pg-agents" class="page">
+            <div class="topbar">
+                <div><div class="page-title">إدارة الوكلاء</div><div class="page-sub">عرض وإدارة جميع وكلاء التطبيق</div></div>
+            </div>
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title" id="agentsCount">الوكلاء</span>
+                    <div class="search-box" style="width:260px">
+                        <input type="text" class="form-control search-icon" id="agentSearch" placeholder="بحث عن وكيل..." oninput="filterAgents()" style="padding-right:40px">
+                        <i class="bi bi-search search-icon"></i>
+                    </div>
+                </div>
+                <table>
+                    <thead><tr><th>الاسم</th><th>الهاتف</th><th>المدينة</th><th>المنطقة</th><th>الوكالات</th><th>الحالة</th><th>الإجراءات</th></tr></thead>
+                    <tbody id="agentsTable"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="pg-banks" class="page">
+            <div class="topbar">
+                <div><div class="page-title">إدارة البنوك</div><div class="page-sub">إضافة وتعديل البنوك المتاحة في التطبيق</div></div>
+                <button class="btn-primary-sm" onclick="openBankModal()"><i class="bi bi-plus-lg me-1"></i>إضافة بنك</button>
+            </div>
+            <div class="panel">
+                <div class="panel-header"><span class="panel-title" id="banksCount">البنوك</span></div>
+                <table>
+                    <thead><tr><th>#</th><th>اسم البنك</th><th>المعرف (icon)</th><th>عدد الوكلاء</th><th>الإجراءات</th></tr></thead>
+                    <tbody id="banksTable"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="pg-tiers" class="page">
+            <div class="topbar">
+                <div><div class="page-title">الشرائح والعمولات</div><div class="page-sub">تعديل شرائح العمولة لكل بنك</div></div>
+                <button class="btn-primary-sm" onclick="openTierModal(null)"><i class="bi bi-plus-lg me-1"></i>إضافة شريحة</button>
+            </div>
+            <div class="mb-3">
+                <select class="form-control" id="tierBankFilter" onchange="renderTiers()" style="width:220px;display:inline-block">
+                    <option value="">كل البنوك</option>
+                </select>
+            </div>
+            <div class="panel">
+                <div class="panel-header"><span class="panel-title" id="tiersCount">الشرائح</span></div>
+                <table>
+                    <thead><tr><th>البنك</th><th>من (MRU)</th><th>إلى (MRU)</th><th>رسوم السحب</th><th>عمولة الإيداع</th><th>الإجراءات</th></tr></thead>
+                    <tbody id="tiersTable"></tbody>
+                </table>
+            </div>
+        </div>
+
+    </div></div><div class="modal-overlay" id="bankModal">
+    <div class="modal-box">
+        <div class="modal-title" id="bankModalTitle">إضافة بنك جديد</div>
+        <input type="hidden" id="bankId">
+        <div class="mb-3"><label class="form-label">اسم البنك (عربي)</label><input id="bankName" class="form-control" placeholder="مثال: بنكيلي"></div>
+        <div class="mb-4"><label class="form-label">معرف البنك (icon) — باللاتيني</label><input id="bankIcon" class="form-control" placeholder="مثال: bankily"></div>
+        <div class="d-flex gap-2">
+            <button class="btn-primary-sm flex-fill py-3" onclick="saveBank()">حفظ</button>
+            <button class="btn-danger-sm flex-fill py-3" onclick="closeModal('bankModal')">إلغاء</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="tierModal">
+    <div class="modal-box">
+        <div class="modal-title" id="tierModalTitle">إضافة شريحة</div>
+        <input type="hidden" id="tierId">
+        <div class="mb-3"><label class="form-label">البنك</label>
+            <select id="tierBank" class="form-control"><option value="">اختر البنك</option></select>
+        </div>
+        <div class="row g-2 mb-3">
+            <div class="col-6"><label class="form-label">المبلغ من (MRU)</label><input id="tierFrom" class="form-control" type="number" placeholder="0"></div>
+            <div class="col-6"><label class="form-label">المبلغ إلى (MRU)</label><input id="tierTo" class="form-control" type="number" placeholder="5000"></div>
+        </div>
+        <div class="row g-2 mb-4">
+            <div class="col-6"><label class="form-label">رسوم السحب (MRU)</label><input id="tierWFee" class="form-control" type="number" placeholder="6"></div>
+            <div class="col-6"><label class="form-label">عمولة الإيداع (MRU)</label><input id="tierDFee" class="form-control" type="number" placeholder="3"></div>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn-primary-sm flex-fill py-3" onclick="saveTier()">حفظ</button>
+            <button class="btn-danger-sm flex-fill py-3" onclick="closeModal('tierModal')">إلغاء</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="confirmModal">
+    <div class="modal-box" style="width:380px">
+        <div class="modal-title" id="confirmTitle">تأكيد</div>
+        <p id="confirmMsg" style="color:var(--gray);font-size:14px;margin-bottom:24px"></p>
+        <div class="d-flex gap-2">
+            <button class="btn-danger-sm flex-fill py-3" id="confirmYes">تأكيد</button>
+            <button class="btn-success-sm flex-fill py-3" onclick="closeModal('confirmModal')">إلغاء</button>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+<script>
+    const API = 'https://info-soft.org/backend-wekily/admin/api';
+    let TOKEN = '';
+    let allAgents = [];
+    let allBanks  = [];
+    let allTiers  = [];
+
+    // ════ AUTH ═══════════════════════════════════════════════
+    async function doLogin() {
+        const user = document.getElementById('loginUser').value.trim();
+        const pass = document.getElementById('loginPass').value.trim();
+        try {
+            const res = await fetch(`${API}/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: user, password: pass })
+            });
+            const data = await res.json();
+            if (res.ok && data.token) {
+                TOKEN = data.token;
+                document.getElementById('loginPage').style.display = 'none';
+                document.getElementById('app').style.display = 'flex';
+                loadAll();
+            } else {
+                showErr(data.message || 'بيانات الدخول غير صحيحة');
+            }
+        } catch { showErr('تعذر الاتصال بالخادم'); }
+    }
+
+    function doLogout() {
+        TOKEN = '';
+        document.getElementById('app').style.display = 'none';
+        document.getElementById('loginPage').style.display = 'flex';
+        document.getElementById('loginPass').value = '';
+    }
+
+    function showErr(msg) {
+        const el = document.getElementById('loginErr');
+        el.textContent = msg; el.classList.remove('d-none');
+    }
+
+    document.getElementById('loginPass').addEventListener('keyup', e => { if (e.key === 'Enter') doLogin(); });
+
+    // ════ NAVIGATION ════════════════════════════════════════
+    function showPage(name) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        document.getElementById('pg-' + name).classList.add('active');
+        event.currentTarget.classList.add('active');
+        if (name === 'dashboard') loadDashboard();
+        if (name === 'agents')    renderAgents();
+        if (name === 'banks')     renderBanks();
+        if (name === 'tiers')     renderTiers();
+    }
+
+    // ════ LOAD DATA ══════════════════════════════════════════
+    const headers = () => ({ 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' });
+
+    async function loadAll() {
+        await Promise.all([ loadAgents(), loadBanks(), loadTiers() ]);
+        loadDashboard();
+    }
+
+    async function loadAgents() {
+        const res = await fetch(`${API}/agents`, { headers: headers() });
+        allAgents = res.ok ? await res.json() : [];
+    }
+    async function loadBanks() {
+        const res = await fetch(`${API}/banks`, { headers: headers() });
+        allBanks = res.ok ? await res.json() : [];
+    }
+    async function loadTiers() {
+        const res = await fetch(`${API}/tiers`, { headers: headers() });
+        allTiers = res.ok ? await res.json() : [];
+    }
+
+    // ════ DASHBOARD ══════════════════════════════════════════
+    function loadDashboard() {
+        const active  = allAgents.filter(a => a.active !== false && !a.blocked).length;
+        const blocked = allAgents.filter(a => a.blocked || a.active === false).length;
+        document.getElementById('s-agents').textContent  = allAgents.length;
+        document.getElementById('s-active').textContent  = active;
+        document.getElementById('s-blocked').textContent = blocked;
+        document.getElementById('s-banks').textContent   = allBanks.length;
+
+        const tbody = document.getElementById('dashAgents');
+        tbody.innerHTML = allAgents.slice(0, 8).map(a => `
+    <tr>
+      <td><strong>${a.fullName || a.name || '—'}</strong></td>
+      <td style="direction:ltr">${a.phone || '—'}</td>
+      <td>${a.city || '—'}</td>
+      <td>${a.blocked ? '<span class="badge-blocked">محظور</span>' : '<span class="badge-active">نشط</span>'}</td>
+    </tr>`).join('');
+    }
+
+    // ════ AGENTS ═════════════════════════════════════════════
+    function renderAgents(list) {
+        const data = list || allAgents;
+        document.getElementById('agentsCount').textContent = `الوكلاء (${data.length})`;
+        document.getElementById('agentsTable').innerHTML = data.map(a => `
+    <tr>
+      <td><strong>${a.fullName || a.name || '—'}</strong></td>
+      <td style="direction:ltr">${a.phone || '—'}</td>
+      <td>${a.city || '—'}</td>
+      <td>${a.region || '—'}</td>
+      <td><span class="badge-bank">${a.agencyCount ?? '—'} وكالة</span></td>
+      <td>${a.blocked ? '<span class="badge-blocked">محظور</span>' : '<span class="badge-active">نشط</span>'}</td>
+      <td>
+        ${a.blocked
+            ? `<button class="btn-success-sm" onclick="toggleBlock(${a.id}, false)"><i class="bi bi-unlock me-1"></i>رفع الحظر</button>`
+            : `<button class="btn-danger-sm"  onclick="toggleBlock(${a.id}, true)"><i class="bi bi-slash-circle me-1"></i>حظر</button>`
+        }
+      </td>
+    </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--gray);padding:32px">لا توجد بيانات</td></tr>';
+    }
+
+    function filterAgents() {
+        const q = document.getElementById('agentSearch').value.toLowerCase();
+        renderAgents(allAgents.filter(a =>
+            (a.fullName || '').toLowerCase().includes(q) ||
+            (a.phone    || '').includes(q) ||
+            (a.city     || '').toLowerCase().includes(q)
+        ));
+    }
+
+    async function toggleBlock(id, block) {
+        const agent = allAgents.find(a => a.id === id);
+        const action = block ? 'حظر' : 'رفع حظر';
+        confirm2(
+            `${action} الوكيل`,
+            `هل تريد ${action} الوكيل "${agent?.fullName}"؟${block ? '\n⚠️ لن يتمكن من فتح التطبيق.' : ''}`,
+            async () => {
+                const res = await fetch(`${API}/agents/${id}/${block ? 'block' : 'unblock'}`, {
+                    method: 'POST', headers: headers()
+                });
+                if (res.ok) {
+                    const idx = allAgents.findIndex(a => a.id === id);
+                    if (idx !== -1) { allAgents[idx].blocked = block; }
+                    renderAgents();
+                    loadDashboard();
+                    toast(block ? '🚫 تم حظر الوكيل بنجاح' : '✅ تم رفع الحظر بنجاح', block ? 'error' : 'success');
+                } else { toast('حدث خطأ', 'error'); }
+            }
+        );
+    }
+
+    // ════ BANKS ══════════════════════════════════════════════
+    function renderBanks() {
+        document.getElementById('banksCount').textContent = `البنوك (${allBanks.length})`;
+        document.getElementById('banksTable').innerHTML = allBanks.map((b, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td><strong>${b.name || '—'}</strong></td>
+      <td><span class="badge-bank" style="direction:ltr">${b.icon || '—'}</span></td>
+      <td>${b.agentCount ?? '—'}</td>
+      <td>
+        <button class="btn-edit-sm me-1" onclick="openBankModal(${JSON.stringify(b).replace(/"/g,'&quot;')})"><i class="bi bi-pencil me-1"></i>تعديل</button>
+        <button class="btn-danger-sm"    onclick="deleteBank(${b.id})"><i class="bi bi-trash me-1"></i>حذف</button>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--gray);padding:32px">لا توجد بنوك</td></tr>';
+    }
+
+    function openBankModal(bank) {
+        document.getElementById('bankId').value   = bank?.id   || '';
+        document.getElementById('bankName').value = bank?.name || '';
+        document.getElementById('bankIcon').value = bank?.icon || '';
+        document.getElementById('bankModalTitle').textContent = bank ? 'تعديل البنك' : 'إضافة بنك جديد';
+        document.getElementById('bankModal').classList.add('open');
+    }
+
+    async function saveBank() {
+        const id   = document.getElementById('bankId').value;
+        const name = document.getElementById('bankName').value.trim();
+        const icon = document.getElementById('bankIcon').value.trim();
+        if (!name || !icon) { toast('يرجى ملء جميع الحقول', 'error'); return; }
+
+        const method = id ? 'PUT' : 'POST';
+        const url    = id ? `${API}/banks/${id}` : `${API}/banks`;
+        const res = await fetch(url, { method, headers: headers(), body: JSON.stringify({ name, icon }) });
+        if (res.ok) {
+            await loadBanks(); renderBanks();
+            closeModal('bankModal');
+            toast(id ? '✅ تم تحديث البنك' : '✅ تم إضافة البنك الجديد', 'success');
+            populateTierBanks();
+        } else { toast('حدث خطأ', 'error'); }
+    }
+
+    async function deleteBank(id) {
+        confirm2('حذف البنك', 'هل أنت متأكد من حذف هذا البنك؟ سيؤثر على جميع الوكلاء المرتبطين.', async () => {
+            const res = await fetch(`${API}/banks/${id}`, { method: 'DELETE', headers: headers() });
+            if (res.ok) { await loadBanks(); renderBanks(); toast('✅ تم حذف البنك', 'success'); }
+            else { toast('حدث خطأ', 'error'); }
+        });
+    }
+
+    // ════ TIERS ══════════════════════════════════════════════
+    function populateTierBanks() {
+        const sel  = document.getElementById('tierBank');
+        const flt  = document.getElementById('tierBankFilter');
+        const opts = allBanks.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+        sel.innerHTML  = '<option value="">اختر البنك</option>' + opts;
+        flt.innerHTML  = '<option value="">كل البنوك</option>' + opts;
+    }
+
+    function renderTiers() {
+        populateTierBanks();
+        const bankId = document.getElementById('tierBankFilter').value;
+        const list   = bankId ? allTiers.filter(t => String(t.bankId) === bankId) : allTiers;
+        document.getElementById('tiersCount').textContent = `الشرائح (${list.length})`;
+        document.getElementById('tiersTable').innerHTML = list.map(t => {
+            const bank = allBanks.find(b => String(b.id) === String(t.bankId));
+            return `<tr>
+      <td><span class="badge-bank">${bank?.name || t.bankName || '—'}</span></td>
+      <td>${Number(t.amountFrom ?? t.amount_from ?? 0).toLocaleString()} MRU</td>
+      <td>${Number(t.amountTo ?? t.amount_to ?? 0).toLocaleString()} MRU</td>
+      <td style="color:var(--red);font-weight:700">${t.withdrawalFee ?? t.withdrawal_fee ?? 0} MRU</td>
+      <td style="color:var(--green);font-weight:700">${t.depositCommission ?? t.deposit_commission ?? 0} MRU</td>
+      <td>
+        <button class="btn-edit-sm me-1" onclick="openTierModal(${JSON.stringify(t).replace(/"/g,'&quot;')})"><i class="bi bi-pencil me-1"></i>تعديل</button>
+        <button class="btn-danger-sm"    onclick="deleteTier(${t.id})"><i class="bi bi-trash me-1"></i>حذف</button>
+      </td>
+    </tr>`;
+        }).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--gray);padding:32px">لا توجد شرائح</td></tr>';
+    }
+
+    function openTierModal(tier) {
+        populateTierBanks();
+        document.getElementById('tierId').value    = tier?.id             || '';
+        document.getElementById('tierBank').value  = tier?.bankId         || '';
+        document.getElementById('tierFrom').value  = tier?.amountFrom     || '';
+        document.getElementById('tierTo').value    = tier?.amountTo       || '';
+        document.getElementById('tierWFee').value  = tier?.withdrawalFee  || '';
+        document.getElementById('tierDFee').value  = tier?.depositCommission || '';
+        document.getElementById('tierModalTitle').textContent = tier ? 'تعديل الشريحة' : 'إضافة شريحة جديدة';
+        document.getElementById('tierModal').classList.add('open');
+    }
+
+    async function saveTier() {
+        const id     = document.getElementById('tierId').value;
+        const bankId = document.getElementById('tierBank').value;
+        const from   = document.getElementById('tierFrom').value;
+        const to     = document.getElementById('tierTo').value;
+        const wFee   = document.getElementById('tierWFee').value;
+        const dFee   = document.getElementById('tierDFee').value;
+        if (!bankId || !from || !to || !wFee || !dFee) { toast('يرجى ملء جميع الحقول', 'error'); return; }
+
+        const body = { bankId: parseInt(bankId), amountFrom: parseFloat(from), amountTo: parseFloat(to), withdrawalFee: parseFloat(wFee), depositCommission: parseFloat(dFee) };
+        const method = id ? 'PUT' : 'POST';
+        const url    = id ? `${API}/tiers/${id}` : `${API}/tiers`;
+        const res = await fetch(url, { method, headers: headers(), body: JSON.stringify(body) });
+        if (res.ok) {
+            await loadTiers(); renderTiers();
+            closeModal('tierModal');
+            toast(id ? '✅ تم تحديث الشريحة' : '✅ تم إضافة الشريحة', 'success');
+        } else { toast('حدث خطأ', 'error'); }
+    }
+
+    async function deleteTier(id) {
+        confirm2('حذف الشريحة', 'هل أنت متأكد من حذف هذه الشريحة؟', async () => {
+            const res = await fetch(`${API}/tiers/${id}`, { method: 'DELETE', headers: headers() });
+            if (res.ok) { await loadTiers(); renderTiers(); toast('✅ تم حذف الشريحة', 'success'); }
+            else { toast('حدث خطأ', 'error'); }
+        });
+    }
+
+    // ════ HELPERS ════════════════════════════════════════════
+    function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+    function confirm2(title, msg, onYes) {
+        document.getElementById('confirmTitle').textContent = title;
+        document.getElementById('confirmMsg').textContent   = msg;
+        document.getElementById('confirmYes').onclick = () => { closeModal('confirmModal'); onYes(); };
+        document.getElementById('confirmModal').classList.add('open');
+    }
+
+    function toast(msg, type = 'success') {
+        const el = document.getElementById('toast');
+        el.textContent = msg;
+        el.className = `toast ${type} show`;
+        setTimeout(() => { el.className = 'toast'; }, 3000);
+    }
+
+    // Close modal on overlay click
+    document.querySelectorAll('.modal-overlay').forEach(m => {
+        m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
+    });
+</script>
+</body>
+</html>
