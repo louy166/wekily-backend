@@ -106,8 +106,8 @@ public class TransactionService {
                             agency != null ? agency.getId() : null,
                             tx.getId(), "WITHDRAWAL",
                             BigDecimal.valueOf(rawAmount), fee, rate);
-                    // ✅ زيادة رصيد الوكالة بمبلغ العمولة (إلا مصرفي)
-                    addCommissionToAgencyBalance(agency, agentComm);
+                    // ✅ Commission enregistrée — PAS ajoutée au solde agence
+                    // Le solde agence reçoit UNIQUEMENT le montant du retrait (bloc 6)
                     log.info("✅ Commission WITHDRAWAL: fee={} rate={} agentComm={}", fee, rate, agentComm);
                 }
 
@@ -119,8 +119,8 @@ public class TransactionService {
                             agency != null ? agency.getId() : null,
                             tx.getId(), "DEPOSIT",
                             BigDecimal.valueOf(rawAmount), fee, BigDecimal.valueOf(100));
-                    // ✅ زيادة رصيد الوكالة بمبلغ العمولة (إلا مصرفي)
-                    addCommissionToAgencyBalance(agency, fee);
+                    // ✅ Commission enregistrée — PAS ajoutée au solde agence
+                    // Le solde agence diminue UNIQUEMENT du montant du dépôt (bloc 6)
                     log.info("✅ Commission DEPOSIT: fee={}", fee);
                 }
 
