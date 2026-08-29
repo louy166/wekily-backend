@@ -93,36 +93,55 @@ public class TransactionService {
         // TRANSFER   → JAMAIS de commission ❌ (كل أنواع التعبئة)
         try {
             if (type == Transaction.TransactionType.WITHDRAWAL) {
-                Integer bankId = agency != null ? getBankIdFromName(agency.getName()) : 1;
-                BigDecimal fee  = commissionService.calcWithdrawalFee(BigDecimal.valueOf(rawAmount), bankId);
-                BigDecimal rate = agency != null
-                        ? commissionService.getAgencyRate(agentId, agency.getId())
-                        : new BigDecimal("50");
-                if (fee.compareTo(BigDecimal.ZERO) > 0) {
-                    // حساب عمولة الوكيل الفعلية
-                    BigDecimal agentComm = fee.multiply(rate)
+                // ✅ Si commission manuelle fournie → l'utiliser. Sinon → calcul auto
+                BigDecimal finalComm;
+                if (manualComm.compareTo(BigDecimal.ZERO) > 0) {
+                    finalComm = manualComm;
+                    log.info("✅ Commission MANUELLE utilisée: {}", finalComm);
+                } else if (manualComm.compareTo(BigDecimal.ZERO) == 0 && req.getManualCommission() != null) {
+                    // ✅ L'utilisateur a explicitement mis 0 → pas de commission
+                    finalComm = BigDecimal.ZERO;
+                    log.info("✅ Commission mise à 0 explicitement");
+                } else {
+                    // Calcul automatique depuis les tiers
+                    Integer bankId = agency != null ? getBankIdFromName(agency.getName()) : 1;
+                    BigDecimal fee  = commissionService.calcWithdrawalFee(BigDecimal.valueOf(rawAmount), bankId);
+                    BigDecimal rate = agency != null
+                            ? commissionService.getAgencyRate(agentId, agency.getId())
+                            : new BigDecimal("50");
+                    finalComm = fee.multiply(rate)
                             .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
+                    log.info("✅ Commission AUTO: fee={} rate={} agentComm={}", fee, rate, finalComm);
+                }
+                if (finalComm.compareTo(BigDecimal.ZERO) > 0) {
                     commissionService.recordCommission(agentId,
                             agency != null ? agency.getId() : null,
                             tx.getId(), "WITHDRAWAL",
-                            BigDecimal.valueOf(rawAmount), fee, rate);
-                    // ✅ Commission enregistrée — PAS ajoutée au solde agence
-                    // Le solde agence reçoit UNIQUEMENT le montant du retrait (bloc 6)
-                    log.info("✅ Commission WITHDRAWAL: fee={} rate={} agentComm={}", fee, rate, agentComm);
+                            BigDecimal.valueOf(rawAmount), finalComm, BigDecimal.valueOf(100));
                 }
+                // ✅ Ajouter la commission au solde agence (retrait + commission)
+                addCommissionToAgencyBalance(agency, finalComm);
 
             } else if (type == Transaction.TransactionType.DEPOSIT) {
-                Integer bankId = agency != null ? getBankIdFromName(agency.getName()) : 1;
-                BigDecimal fee  = commissionService.calcDepositCommission(BigDecimal.valueOf(rawAmount), bankId);
-                if (fee.compareTo(BigDecimal.ZERO) > 0) {
+                // ✅ Si commission manuelle fournie → l'utiliser. Sinon → calcul auto
+                BigDecimal finalComm;
+                if (manualComm.compareTo(BigDecimal.ZERO) > 0) {
+                    finalComm = manualComm;
+                } else if (manualComm.compareTo(BigDecimal.ZERO) == 0 && req.getManualCommission() != null) {
+                    finalComm = BigDecimal.ZERO;
+                } else {
+                    Integer bankId = agency != null ? getBankIdFromName(agency.getName()) : 1;
+                    finalComm = commissionService.calcDepositCommission(BigDecimal.valueOf(rawAmount), bankId);
+                }
+                if (finalComm.compareTo(BigDecimal.ZERO) > 0) {
                     commissionService.recordCommission(agentId,
                             agency != null ? agency.getId() : null,
                             tx.getId(), "DEPOSIT",
-                            BigDecimal.valueOf(rawAmount), fee, BigDecimal.valueOf(100));
-                    // ✅ Commission enregistrée — PAS ajoutée au solde agence
-                    // Le solde agence diminue UNIQUEMENT du montant du dépôt (bloc 6)
-                    log.info("✅ Commission DEPOSIT: fee={}", fee);
+                            BigDecimal.valueOf(rawAmount), finalComm, BigDecimal.valueOf(100));
                 }
+                // ✅ Ajouter la commission au solde agence (dépôt + commission)
+                addCommissionToAgencyBalance(agency, finalComm);
+                log.info("✅ Commission DEPOSIT: finalComm={}", finalComm);
 
             } else {
                 // TRANSFER → pas de commission
@@ -271,8 +290,7 @@ public class TransactionService {
                 log.warn("⚠️ commissions table: {}", e.getMessage());
             }
 
-            // 3. ✅ Mettre à jour le solde de l'agence (agencies.current_balance)
-            // La commission est un gain de l'agent — elle s'ajoute au solde de l'agence
+            // 3. ✅ Mettre à jour le solde de l'agence avec la différence de commission
             try {
                 Agency agency = agencyRepository.findById(agencyId).orElse(null);
                 if (agency != null) {
