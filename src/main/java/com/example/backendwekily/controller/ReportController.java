@@ -14,14 +14,20 @@ public class ReportController {
 
     private final ReportService reportService;
 
+    // GET /api/reports?period=الشهر
     @GetMapping
     public ResponseEntity<Map<String, Object>> getReport(
             @RequestHeader("Authorization") String token,
-            @RequestParam(defaultValue = "الشهر") String period,
-            @RequestParam(required = false) String from,  // ✅ تاريخ البداية
-            @RequestParam(required = false) String to) {  // ✅ تاريخ النهاية
+            @RequestParam(defaultValue = "الشهر") String period) {
         Long agentId = reportService.extractAgentId(token);
-        // ✅ نمرر from و to للـ service
-        return ResponseEntity.ok(reportService.getReport(agentId, period, from, to));
+        return ResponseEntity.ok(reportService.getReport(agentId, period));
+    }
+
+    // ✅ GET /api/reports/balances — الرصيد الحالي لكل قسم
+    @GetMapping("/balances")
+    public ResponseEntity<?> getBalances(
+            @RequestHeader("Authorization") String token) {
+        Long agentId = reportService.extractAgentId(token);
+        return ResponseEntity.ok(reportService.getCurrentBalances(agentId));
     }
 }
