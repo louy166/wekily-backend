@@ -49,12 +49,13 @@ public class SecurityConfig {
 
     @Bean
     public UserDetailsService userDetailsService() {
-        return username -> agentRepository.findByEmail(username)
-                .map(agent -> User.withUsername(agent.getEmail())
+        return identifier -> agentRepository.findByEmail(identifier)
+                .or(() -> agentRepository.findByPhone(identifier)) // ✅ Recherche par email OU par téléphone
+                .map(agent -> User.withUsername(agent.getEmail() != null ? agent.getEmail() : agent.getPhone())
                         .password(agent.getPasswordHash())
                         .roles("AGENT")
                         .build())
-                .orElseThrow(() -> new UsernameNotFoundException("Agent non trouvé: " + username));
+                .orElseThrow(() -> new UsernameNotFoundException("Agent non trouvé avec l'identifiant: " + identifier));
     }
 
     @Bean
