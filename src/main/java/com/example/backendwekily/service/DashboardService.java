@@ -70,14 +70,8 @@ public class DashboardService {
         // ── Solde mis à jour dynamiquement ────────────────────
         BigDecimal totalBalance = safe(agent.getTotalBalance());
 
-        // ✅ Modification clé : Le solde cash (cashBalance) est égal à la caisse de l'agence (currentBalance)
+        // ✅ CORRECTION : Utilisation directe du solde cash de l'agent sans l'écraser par la première agence
         BigDecimal cashBalance = agent.getCashBalance() != null ? agent.getCashBalance() : BigDecimal.ZERO;
-        if (agencies != null && !agencies.isEmpty()) {
-            Agency primaryAgency = agencies.get(0);
-            if (primaryAgency.getCurrentBalance() != null) {
-                cashBalance = primaryAgency.getCurrentBalance();
-            }
-        }
 
         // ── Totaux globaux (carte de solde) ───────────────────
         BigDecimal totalDeposits    = safe(transactionRepository.sumDailyDeposits(agentId, beginOfTime));
@@ -93,7 +87,7 @@ public class DashboardService {
         int transferCount   = safeInt(transactionRepository.countDailyTransfers(agentId, startOfDay));
         int pending         = safeInt(transactionRepository.countPendingTransactions(agentId));
 
-        log.info("📊 Dashboard agent {} → {} agences trouvées. Caisse synchronisée: {}", agentId, agencyList.size(), cashBalance);
+        log.info("📊 Dashboard agent {} → {} agences trouvées. Caisse cash: {}", agentId, agencyList.size(), cashBalance);
 
         // ── 10 dernières opérations (tx + expenses) ──────────
         List<Transaction> recentTx = transactionRepository
@@ -143,7 +137,7 @@ public class DashboardService {
         // ── Réponse ───────────────────────────────────────────
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("totalBalance",       totalBalance);
-        response.put("cashBalance",        cashBalance); // ✅ Retourne à présent le solde de la caisse de l'agence
+        response.put("cashBalance",        cashBalance); // ✅ Retourne le vrai solde cash de l'agent
         response.put("totalDeposits",      totalDeposits);
         response.put("totalWithdrawals",   totalWithdrawals);
         response.put("todayDeposits",      totalDeposits);
