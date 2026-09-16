@@ -22,7 +22,7 @@ public class ReportService {
     private final AgentTokenRepository  agentTokenRepository;
     private final TransactionRepository transactionRepository;
     private final ExpenseRepository     expenseRepository;
-    private final JdbcTemplate             jdbc;
+    private final JdbcTemplate          jdbc;
 
     public Long extractAgentId(String authHeader) {
         String token = authHeader.replace("Bearer ", "").trim();
@@ -83,7 +83,6 @@ public class ReportService {
     }
 
     private List<Map<String, Object>> buildAgencyBreakdown(Long agentId, LocalDateTime start) {
-        // Grouper par agency_name
         List<Transaction> txs = transactionRepository.findByAgentIdOrderByCreatedAtDesc(agentId)
                 .stream()
                 .filter(t -> t.getCreatedAt() != null && t.getCreatedAt().isAfter(start))
@@ -93,7 +92,6 @@ public class ReportService {
                 .filter(t -> t.getAgencyName() != null)
                 .collect(Collectors.groupingBy(Transaction::getAgencyName, Collectors.counting()));
 
-        // ✅ Total du montant par agence
         Map<String, BigDecimal> totalByAgency = txs.stream()
                 .filter(t -> t.getAgencyName() != null && t.getAmount() != null)
                 .collect(Collectors.groupingBy(
@@ -112,7 +110,6 @@ public class ReportService {
                     m.put("count",   e.getValue());
                     m.put("percent", BigDecimal.valueOf(e.getValue() * 100.0 / total)
                             .setScale(0, RoundingMode.HALF_UP));
-                    // ✅ إجمالي المبلغ لكل وكالة
                     m.put("total",   totalByAgency.getOrDefault(e.getKey(), BigDecimal.ZERO)
                             .abs().setScale(2, RoundingMode.HALF_UP));
                     return m;
@@ -136,7 +133,7 @@ public class ReportService {
     public Map<String, Object> getCurrentBalances(Long agentId) {
         Map<String, Object> result = new LinkedHashMap<>();
 
-        // 1. النقد — cash_balance de l'agent
+        // 1. النقد — cash_balance
         var agentRows = jdbc.queryForList(
                 "SELECT cash_balance, total_balance FROM agents WHERE id = ?", agentId
         );
@@ -146,7 +143,7 @@ public class ReportService {
         }
         result.put("cash", cashBalance);
 
-        // 2. التطبيقات — somme des soldes des agences (bankily, masrvi, sedad...)
+        // 2. التطبيقات — somme des soldes des agences
         var agencyRows = jdbc.queryForList(
                 "SELECT COALESCE(name, icon) AS name, COALESCE(current_balance, 0) AS balance " +
                         "FROM agencies WHERE agent_id = ? AND active = 1 ORDER BY name", agentId
@@ -164,7 +161,7 @@ public class ReportService {
         result.put("apps", totalApps);
         result.put("appsDetail", apps);
 
-        // 3. العمولات — somme des commissions
+        // 3. العمولات — commissions
         var commRows = jdbc.queryForList(
                 "SELECT COALESCE(SUM(commission_amount), 0) AS total FROM commissions WHERE agent_id = ?", agentId
         );
@@ -172,10 +169,10 @@ public class ReportService {
                 : ((Number) commRows.get(0).getOrDefault("total", 0)).doubleValue();
         result.put("commissions", totalComm);
 
-        // 4. الديون — pas encore activé
+        // 4. الديون
         result.put("debts", 0);
 
-        // 5. الودائع — somme des dépôts actifs
+        // 5. الودائع — client_deposits
         var depRows = jdbc.queryForList(
                 "SELECT COALESCE(SUM(amount), 0) AS total FROM client_deposits " +
                         "WHERE agent_id = ? AND status = 'ACTIVE'", agentId
@@ -184,10 +181,10 @@ public class ReportService {
                 : ((Number) depRows.get(0).getOrDefault("total", 0)).doubleValue();
         result.put("deposits", totalDeposits);
 
-        // 6. الأرباح — pas encore activé
+        // 6. الأرباح
         result.put("profits", 0);
 
-        // 7. المصاريف — somme des dépenses
+        // 7. المصاريف — expenses
         var expRows = jdbc.queryForList(
                 "SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE agent_id = ?", agentId
         );
@@ -195,13 +192,16 @@ public class ReportService {
                 : ((Number) expRows.get(0).getOrDefault("total", 0)).doubleValue();
         result.put("expenses", totalExpenses);
 
-        // Total global
-        result.put("totalBalance", cashBalance + totalApps + totalComm + totalDeposits - totalExpenses);
+        // 🔑 Total global cohérent avec la clé `totalBalance` attendue par le front
+        double totalBalance = cashBalance + totalApps + totalComm + totalDeposits - totalExpenses;
+        result.put("totalBalance", totalBalance);
 
-        log.info("📊 Balances agent {}: cash={} apps={} comm={} dep={} exp={}",
-                agentId, cashBalance, totalApps, totalComm, totalDeposits, totalExpenses);
+        // Ajout d'un alias "total" pour rétrocompatibilité au cas où
+        result.put("total", totalBalance);
+
+        log.info("📊 Balances agent {}: cash={} apps={} comm={} dep={} exp={} total={}",
+                agentId, cashBalance, totalApps, totalComm, totalDeposits, totalExpenses, totalBalance);
 
         return result;
     }
-
 }
