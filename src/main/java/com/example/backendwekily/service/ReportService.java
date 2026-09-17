@@ -163,7 +163,7 @@ public class ReportService {
 
         // 3. العمولات — commissions
         var commRows = jdbc.queryForList(
-                "SELECT COALESCE(SUM(commission_amount), 0) AS total FROM commissions WHERE agent_id = ?", agentId
+                "SELECT COALESCE(SUM(agent_commission), 0) AS total FROM commissions WHERE agent_id = ?", agentId
         );
         double totalComm = commRows.isEmpty() ? 0
                 : ((Number) commRows.get(0).getOrDefault("total", 0)).doubleValue();
