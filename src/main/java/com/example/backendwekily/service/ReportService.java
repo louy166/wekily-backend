@@ -213,4 +213,23 @@ public class ReportService {
 
         return result;
     }
+
+    // ✅ Réinitialisation des commissions, des dépenses (المصاريف) et autres comptes associés à l'agent
+    public void resetFinancialAccounts(Long agentId) {
+        try {
+            // 1. Supprimer ou remettre à zéro les commissions
+            jdbc.update("DELETE FROM commissions WHERE agent_id = ?", agentId);
+
+            // 2. Supprimer ou remettre à zéro les dépenses (المصاريف)
+            jdbc.update("DELETE FROM expenses WHERE agent_id = ?", agentId);
+
+            // 3. Si vous gérez les profits dans une table dédiée, ajoutez l'instruction ici :
+            // jdbc.update("DELETE FROM profits WHERE agent_id = ?", agentId);
+
+            log.info("🧹 Réinitialisation réussie des comptes (commissions et dépenses) pour l'agent ID: {}", agentId);
+        } catch (Exception e) {
+            log.error("❌ Erreur lors de la réinitialisation des comptes pour l'agent {}: {}", agentId, e.getMessage());
+            throw new RuntimeException("Échec de la réinitialisation: " + e.getMessage());
+        }
+    }
 }

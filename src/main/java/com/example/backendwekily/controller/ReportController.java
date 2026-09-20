@@ -30,4 +30,17 @@ public class ReportController {
         Long agentId = reportService.extractAgentId(token);
         return ResponseEntity.ok(reportService.getCurrentBalances(agentId));
     }
+
+    // ✅ POST /api/reports/reset-accounts — تصفير العمولات، المصاريف والأرباح
+    @PostMapping("/reset-accounts")
+    public ResponseEntity<?> resetAccounts(
+            @RequestHeader("Authorization") String token) {
+        try {
+            Long agentId = reportService.extractAgentId(token);
+            reportService.resetFinancialAccounts(agentId);
+            return ResponseEntity.ok(Map.of("message", "Accounts reset successfully"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 }
