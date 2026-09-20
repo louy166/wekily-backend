@@ -79,5 +79,7 @@ public class ProfileService {
         return getProfile(agentId);
     }
 
+    // Surcharges pour gérer proprement Long et Integer
+    private int safeInt(Long v)    { return v != null ? v.intValue() : 0; }
     private int safeInt(Integer v) { return v != null ? v : 0; }
 }

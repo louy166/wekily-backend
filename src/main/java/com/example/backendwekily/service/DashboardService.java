@@ -43,7 +43,7 @@ public class DashboardService {
         LocalDateTime startOfDay  = LocalDate.now().atStartOfDay();
         DateTimeFormatter fmt     = DateTimeFormatter.ofPattern("HH:mm dd/MM");
 
-        // ── ✅ Agences réelles avec dépôts/retraits du jour ─
+        // ── Agences réelles avec dépôts/retraits du jour ─
         List<Agency> agencies = agencyRepository.findByAgentIdAndActiveTrue(agentId);
         List<Map<String, Object>> agencyList = agencies.stream().map(ag -> {
             String agNm = ag.getName() != null ? ag.getName() : "";
@@ -61,16 +61,14 @@ public class DashboardService {
             m.put("id",               ag.getId());
             m.put("name",             ag.getName());
             m.put("balance",          ag.getCurrentBalance() != null ? ag.getCurrentBalance() : BigDecimal.ZERO);
-            m.put("todayDeposits",    dep);   // ✅ vert
-            m.put("todayWithdrawals", wit);   // ✅ rouge
+            m.put("todayDeposits",    dep);
+            m.put("todayWithdrawals", wit);
             m.put("todayChange",      dep.subtract(wit));
             return m;
         }).collect(Collectors.toList());
 
         // ── Solde mis à jour dynamiquement ────────────────────
         BigDecimal totalBalance = safe(agent.getTotalBalance());
-
-        // ✅ CORRECTION : Utilisation directe du solde cash de l'agent sans l'écraser par la première agence
         BigDecimal cashBalance = agent.getCashBalance() != null ? agent.getCashBalance() : BigDecimal.ZERO;
 
         // ── Totaux globaux (carte de solde) ───────────────────
@@ -137,11 +135,11 @@ public class DashboardService {
         // ── Réponse ───────────────────────────────────────────
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("totalBalance",       totalBalance);
-        response.put("cashBalance",        cashBalance); // ✅ Retourne le vrai solde cash de l'agent
+        response.put("cashBalance",        cashBalance);
         response.put("totalDeposits",      totalDeposits);
         response.put("totalWithdrawals",   totalWithdrawals);
-        response.put("todayDeposits",      totalDeposits);
-        response.put("todayWithdrawals",   totalWithdrawals);
+        response.put("todayDeposits",      todayDeposits);
+        response.put("todayWithdrawals",   todayWithdrawals);
         response.put("transactionCount",   totalTxCount);
         response.put("agencies",           agencyList);
         response.put("stats",              stats);
@@ -151,7 +149,10 @@ public class DashboardService {
     }
 
     private BigDecimal safe(BigDecimal v) { return v != null ? v : BigDecimal.ZERO; }
-    private int safeInt(Integer v)        { return v != null ? v : 0; }
+
+    // Surcharges pour gérer proprement Long et Integer
+    private int safeInt(Long v) { return v != null ? v.intValue() : 0; }
+    private int safeInt(Integer v) { return v != null ? v : 0; }
 
     private BigDecimal safeQ(String sql, Object... args) {
         try {
