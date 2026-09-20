@@ -39,6 +39,7 @@ public class ReportService {
         BigDecimal totalDeposits    = safe(transactionRepository.sumDailyDeposits(agentId, start));
         BigDecimal totalWithdrawals = safe(transactionRepository.sumDailyWithdrawals(agentId, start));
         BigDecimal totalTransfers   = safe(transactionRepository.sumDailyTransfers(agentId, start));
+
         int depositCount    = safeInt(transactionRepository.countDailyDeposits(agentId, start));
         int withdrawalCount = safeInt(transactionRepository.countDailyWithdrawals(agentId, start));
         int transferCount   = safeInt(transactionRepository.countDailyTransfers(agentId, start));
@@ -136,6 +137,7 @@ public class ReportService {
     }
 
     private BigDecimal safe(BigDecimal v) { return v != null ? v : BigDecimal.ZERO; }
+    private int safeInt(Long v)           { return v != null ? v.intValue() : 0; }
     private int safeInt(Integer v)        { return v != null ? v : 0; }
 
     // ✅ الرصيد الحالي — النقد، التطبيقات، العمولات، الديون، الودائع، الأرباح، المصاريف
@@ -204,8 +206,6 @@ public class ReportService {
         // 🔑 Total global cohérent avec la clé `totalBalance` attendue par le front
         double totalBalance = cashBalance + totalApps + totalComm + totalDeposits - totalExpenses;
         result.put("totalBalance", totalBalance);
-
-        // Ajout d'un alias "total" pour rétrocompatibilité au cas où
         result.put("total", totalBalance);
 
         log.info("📊 Balances agent {}: cash={} apps={} comm={} dep={} exp={} total={}",

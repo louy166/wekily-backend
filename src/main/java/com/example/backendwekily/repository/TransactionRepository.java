@@ -29,19 +29,19 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     BigDecimal sumDailyTransfers(@Param("id") Long id, @Param("start") LocalDateTime start);
 
     @Query("SELECT COUNT(t) FROM Transaction t WHERE t.agent.id=:id AND t.createdAt>=:start")
-    Integer countDailyTransactions(@Param("id") Long id, @Param("start") LocalDateTime start);
+    Long countDailyTransactions(@Param("id") Long id, @Param("start") LocalDateTime start);
 
     @Query("SELECT COUNT(t) FROM Transaction t WHERE t.agent.id=:id AND t.type='DEPOSIT' AND t.createdAt>=:start")
-    Integer countDailyDeposits(@Param("id") Long id, @Param("start") LocalDateTime start);
+    Long countDailyDeposits(@Param("id") Long id, @Param("start") LocalDateTime start);
 
     @Query("SELECT COUNT(t) FROM Transaction t WHERE t.agent.id=:id AND t.type='WITHDRAWAL' AND t.createdAt>=:start")
-    Integer countDailyWithdrawals(@Param("id") Long id, @Param("start") LocalDateTime start);
+    Long countDailyWithdrawals(@Param("id") Long id, @Param("start") LocalDateTime start);
 
     @Query("SELECT COUNT(t) FROM Transaction t WHERE t.agent.id=:id AND t.type='TRANSFER' AND t.createdAt>=:start")
-    Integer countDailyTransfers(@Param("id") Long id, @Param("start") LocalDateTime start);
+    Long countDailyTransfers(@Param("id") Long id, @Param("start") LocalDateTime start);
 
     @Query("SELECT COUNT(t) FROM Transaction t WHERE t.agent.id=:id AND t.status='PENDING'")
-    Integer countPendingTransactions(@Param("id") Long agentId);
+    Long countPendingTransactions(@Param("id") Long agentId);
 
     // ── Stats par agence (native SQL + CURDATE) ──────────────
     @Query(value =
@@ -55,7 +55,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
                                         @Param("agencyName") String agencyName);
 
     @Query(value =
-            "SELECT COALESCE(SUM(ABS(t.amount)), 0) FROM transactions t " +
+            "SELECT COALESCE(SUM(ABS(t.amount), 0) FROM transactions t " +
                     "WHERE t.agent_id = :agentId " +
                     "AND (t.agency_id = :agencyId OR t.agency_name = :agencyName) " +
                     "AND t.type = 'WITHDRAWAL' AND DATE(t.created_at) = CURDATE()",
