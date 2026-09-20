@@ -63,8 +63,14 @@ public class ReportService {
 
     private List<Map<String, Object>> buildChartData(Long agentId, String period) {
         List<Map<String, Object>> data = new ArrayList<>();
-        int days = period.equals("اليوم") ? 1 : period.equals("الأسبوع") ? 7
-                : period.equals("الشهر") ? 30 : 365;
+
+        // Sécurisation contre les valeurs nulles
+        String p = period != null ? period : "الشهر";
+
+        int days = p.equals("اليوم") ? 1
+                : p.equals("الأسبوع") ? 7
+                : p.equals("السنة") ? 365 : 30; // Par défaut 30 jours ("الشهر")
+
         int points = Math.min(days, 7);
 
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM");
@@ -118,6 +124,9 @@ public class ReportService {
     }
 
     private LocalDateTime getStartDate(String period) {
+        if (period == null) {
+            return LocalDate.now().minusDays(30).atStartOfDay();
+        }
         return switch (period) {
             case "اليوم"    -> LocalDate.now().atStartOfDay();
             case "الأسبوع"  -> LocalDate.now().minusDays(7).atStartOfDay();
