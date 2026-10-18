@@ -66,6 +66,7 @@ public class LoginByPhoneService {
                 .agentId(agent.getId())
                 .name(agent.getFullName())
                 .role(agent.getRole())
+                .currency(agent.getCurrency() != null ? agent.getCurrency() : "MRU")
                 .build();
     }
 }

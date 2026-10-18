@@ -45,6 +45,11 @@ public class Agent {
     @Builder.Default
     private Boolean blocked = false;
 
+    // ✅ Devise de l'agent (MRU par défaut, ou EUR, USD, CFA…)
+    @Column(name = "currency", length = 10)
+    @Builder.Default
+    private String currency = "MRU";
+
     // ── Champs register ───────────────────────────────────────
     private String phone;
 

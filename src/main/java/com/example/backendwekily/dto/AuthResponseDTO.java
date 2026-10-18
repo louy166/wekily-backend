@@ -11,4 +11,5 @@ public class AuthResponseDTO {
     private Long   agentId;
     private String name;
     private String role;
+    private String currency;
 }
