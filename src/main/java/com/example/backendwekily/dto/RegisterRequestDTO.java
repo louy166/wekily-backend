@@ -15,4 +15,5 @@ public class RegisterRequestDTO {
     private List<Integer> agencyIds; // IDs des agences sélectionnées (1-7)
     // password optionnel (on utilise PIN)
     private String      password;
+    private String      currency;   // Devise de l'agent (MRU, EUR, USD, CFA…)
 }

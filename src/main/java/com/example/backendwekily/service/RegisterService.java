@@ -59,10 +59,11 @@ public class RegisterService {
                 .role("وكيل")
                 .totalBalance(BigDecimal.ZERO)
                 .active(true)
+                .currency(req.getCurrency() != null ? req.getCurrency() : "MRU")
                 .build();
 
         agentRepository.save(agent);
-        log.info("✅ Agent créé: {} (ID: {})", agent.getFullName(), agent.getId());
+        log.info("✅ Agent créé: {} (ID: {}) — devise: {}", agent.getFullName(), agent.getId(), agent.getCurrency());
 
         // ✅ Créer UNIQUEMENT les agences sélectionnées par l'agent
         List<Integer> selectedIds = req.getAgencyIds() != null
@@ -88,13 +89,14 @@ public class RegisterService {
         AgentToken token = AgentToken.builder().agent(agent).build();
         agentTokenRepository.save(token);
 
-        // ✅ Retourner AuthResponseDTO
+        // ✅ Retourner AuthResponseDTO avec currency
         return AuthResponseDTO.builder()
                 .token(token.getToken())
                 .type("Bearer")
                 .agentId(agent.getId())
                 .name(agent.getFullName())
                 .role(agent.getRole())
+                .currency(agent.getCurrency())
                 .build();
     }
 }
