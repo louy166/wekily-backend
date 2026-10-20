@@ -25,17 +25,14 @@ public class TransfertController {
     private final AgentCorrespondanceRepository   correspondanceRepository;
     private final AgentTokenRepository              agentTokenRepository;
     private final JdbcTemplate                      jdbc;
-    private final TransactionRepository             transactionRepository; // ✅ pour sauvegarder l'historique
+    private final TransactionRepository             transactionRepository;
 
     // ── GET /api/transferts/correspondants ─────────────────────────────
-    // ✅ Liste les agents de la table agent_correspondance de l'agent connecté
     @GetMapping("/correspondants")
     public ResponseEntity<?> getCorrespondants(
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
         try {
             Long agentId = extractAgentId(authHeader);
-            // Récupérer les agents liés via agent_correspondance (émetteur OU receveur)
-            // ✅ Seulement les agents liés directement à l'agent connecté
             List<Map<String, Object>> rows = jdbc.queryForList(
                     "SELECT DISTINCT a.id, a.full_name, a.phone " +
                             "FROM agent_correspondance ac " +
@@ -62,7 +59,6 @@ public class TransfertController {
     }
 
     // ── GET /api/transferts/acces ───────────────────────────────────────
-    // ✅ Extrait l'agentId depuis le token → vérification individuelle
     @GetMapping("/acces")
     public ResponseEntity<?> verifierAcces(
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
@@ -90,7 +86,6 @@ public class TransfertController {
     }
 
     // ── GET /api/transferts/soldes ──────────────────────────────────────
-    // ✅ Extrait l'agentId depuis le token → chaque agent voit ses propres soldes
     @GetMapping("/soldes")
     public ResponseEntity<?> getSoldes(
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
@@ -133,7 +128,6 @@ public class TransfertController {
     }
 
     // ── POST /api/transferts ───────────────────────────────────────────
-    // ✅ L'agentId émetteur est extrait du token — pas de body.idAgentEmetteur
     @PostMapping
     @Transactional
     public ResponseEntity<?> transferer(
@@ -141,12 +135,18 @@ public class TransfertController {
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
         try {
             log.info("📥 Transfert: {}", body);
-            // ✅ Toujours l'agent connecté — impossible de tricher
             Long idEmetteur = extractAgentId(authHeader);
             String telephone    = body.get("telephoneRecepteur").toString().trim();
             double montantEnv   = Double.parseDouble(body.get("montantEnvoye").toString());
             String devEnv       = (String) body.get("devEnv");
             String devRet       = (String) body.get("devRet");
+
+            // ✅ Commission du transfert
+            double commission = 0;
+            if (body.containsKey("commission") && body.get("commission") != null) {
+                commission = Double.parseDouble(body.get("commission").toString());
+            }
+            log.info("💰 Commission transfert: {} {}", commission, devEnv);
 
             if (montantEnv <= 0) {
                 return ResponseEntity.badRequest()
@@ -180,13 +180,10 @@ public class TransfertController {
             BigDecimal bdMontantRetire = BigDecimal.valueOf(montantRetire);
 
             // ══════════════════════════════════════════════════════
-            // ÉMETTEUR : solde diminue — JDBC pur (évite les conflits JPA)
+            // ÉMETTEUR : solde diminue
             // ══════════════════════════════════════════════════════
-            // 4a. Solde devise MRU de l'émetteur diminue
             updateDeviseBalance(emetteur, devEnv, bdMontantEnv.negate());
 
-            // 4b. cashBalance MRU diminue SEULEMENT si l'émetteur envoie du MRU
-            // Si devEnv = CFA/EUR/... → cashBalance MRU inchangé (seul agent_devise_balance CFA diminue)
             if ("MRU".equals(devEnv)) {
                 jdbc.update(
                         "UPDATE agents SET cash_balance = cash_balance - ?, total_balance = total_balance - ? WHERE id = ?",
@@ -197,14 +194,20 @@ public class TransfertController {
                 log.info("📤 Émetteur {} : envoie {} {} — cash_balance MRU INCHANGÉ", emetteur.getFullName(), montantEnv, devEnv);
             }
 
+            // ✅ Commission transfert : l'agent gagne la commission du client
+            if (commission > 0) {
+                jdbc.update(
+                        "UPDATE agents SET cash_balance = cash_balance + ?, total_balance = total_balance + ? WHERE id = ?",
+                        commission, commission, emetteur.getId()
+                );
+                log.info("💰 Commission +{} {} ajoutée à agent {}", commission, devEnv, emetteur.getFullName());
+            }
+
             // ══════════════════════════════════════════════════════
-            // RECEVEUR : solde devise augmente — cashBalance MRU INCHANGÉ si devise ≠ MRU
+            // RECEVEUR : solde devise augmente
             // ══════════════════════════════════════════════════════
-            // 5a. Solde devise reçue (ex: CFA) augmente
             updateDeviseBalance(receveur, devRet, bdMontantRetire);
 
-            // 5b. ✅ cashBalance MRU du Dashboard : SEULEMENT si la devise reçue est MRU
-            //     Si CFA/EUR/... → NE PAS toucher cash_balance / total_balance MRU
             if ("MRU".equals(devRet)) {
                 jdbc.update(
                         "UPDATE agents SET cash_balance = cash_balance + ?, total_balance = total_balance + ? WHERE id = ?",
@@ -212,26 +215,24 @@ public class TransfertController {
                 );
                 log.info("📥 Receveur {} : cash_balance + {} MRU (JDBC)", receveur.getFullName(), montantRetire);
             } else {
-                // Devise étrangère (CFA, EUR...) → solde devise uniquement, PAS le Dashboard MRU
                 log.info("📥 Receveur {} : +{} {} en devise — cash_balance MRU INCHANGÉ", receveur.getFullName(), montantRetire, devRet);
             }
 
-            // ✅ 2 références uniques — contrainte UNIQUE sur transactions.reference
+            // ✅ Références uniques
             String reference  = String.format("%04d", (int)(Math.random() * 9000) + 1000);
             String referenceR = String.format("%04d", (int)(Math.random() * 9000) + 1000);
-            // S'assurer que les deux sont différentes
             while (referenceR.equals(reference)) {
                 referenceR = String.format("%04d", (int)(Math.random() * 9000) + 1000);
             }
-            // ✅ Lire le numéro du client envoyé par le frontend
+
+            // ✅ Numéro du client
             String clientPhone = "";
             if (body.containsKey("clientPhone") && body.get("clientPhone") != null) {
                 clientPhone = body.get("clientPhone").toString().trim();
             }
             log.info("📱 clientPhone reçu: '{}'", clientPhone);
 
-            // ✅ Stocker clientPhone pour LES 2 agents (émetteur ET receveur)
-            // Émetteur voit : numéro du client
+            // ✅ Transaction émetteur — avec commission
             Transaction txEmetteur = Transaction.builder()
                     .agent(emetteur)
                     .clientName(clientPhone.isEmpty() ? receveur.getFullName() : clientPhone)
@@ -240,11 +241,12 @@ public class TransfertController {
                     .status(Transaction.TransactionStatus.COMPLETED)
                     .agencyName(devEnv + "→" + devRet)
                     .notes("TRF#" + reference + " → " + receveur.getFullName())
+                    .manualCommission(BigDecimal.valueOf(commission))
                     .build();
             txEmetteur.setReference(reference);
             transactionRepository.save(txEmetteur);
 
-            // Receveur voit aussi : numéro du client
+            // Transaction receveur
             Transaction txReceveur = Transaction.builder()
                     .agent(receveur)
                     .clientName(clientPhone.isEmpty() ? emetteur.getFullName() : clientPhone)
@@ -257,9 +259,9 @@ public class TransfertController {
             txReceveur.setReference(referenceR);
             transactionRepository.save(txReceveur);
 
-            log.info("✅ Transfert {} {} → {} {} | {} → {} | Réf: {}",
+            log.info("✅ Transfert {} {} → {} {} | {} → {} | Commission: {} | Réf: {}",
                     montantEnv, devEnv, montantRetire, devRet,
-                    emetteur.getFullName(), receveur.getFullName(), reference);
+                    emetteur.getFullName(), receveur.getFullName(), commission, reference);
 
             return ResponseEntity.ok(Map.of(
                     "reference",     reference,
@@ -267,6 +269,7 @@ public class TransfertController {
                     "montantRetire", montantRetire,
                     "devEnv",        devEnv,
                     "devRet",        devRet,
+                    "commission",    commission,
                     "receveur",      receveur.getFullName(),
                     "message",       "تم التحويل بنجاح"
             ));
@@ -283,7 +286,6 @@ public class TransfertController {
     }
 
     // ── POST /api/transferts/soldes/ajouter ────────────────────────────
-    // ✅ Alimenter manuellement un solde devise (CFA, EUR...) pour l'agent connecté
     @PostMapping("/soldes/ajouter")
     @Transactional
     public ResponseEntity<?> ajouterSolde(
@@ -295,7 +297,6 @@ public class TransfertController {
             if (devise == null || devise.isBlank()) {
                 return ResponseEntity.badRequest().body(Map.of("message", "العملة مطلوبة"));
             }
-            // Refuser MRU — cette action est réservée aux devises étrangères
             if ("MRU".equalsIgnoreCase(devise)) {
                 return ResponseEntity.badRequest()
                         .body(Map.of("message", "لا يمكن إضافة الأوقية هنا — استخدم الإيداع"));
@@ -308,7 +309,6 @@ public class TransfertController {
             Agent agent = agentRepository.findById(agentId)
                     .orElseThrow(() -> new RuntimeException("الوكيل غير موجود"));
 
-            // Créer ou mettre à jour le solde devise
             updateDeviseBalance(agent, devise.toUpperCase(), BigDecimal.valueOf(montant));
 
             log.info("✅ Ajout manuel {} {} pour agent {}", montant, devise, agent.getFullName());
@@ -323,18 +323,16 @@ public class TransfertController {
     }
 
     // ── GET /api/transferts/historique ──────────────────────────────────
-    // ✅ Lit l'historique depuis la table transactions (type=TRANSFER)
     @GetMapping("/historique")
     public ResponseEntity<?> getHistorique(
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
         Long agentId = extractAgentId(authHeader);
         try {
-            // ✅ Lire depuis transactions — sauvegardées lors de chaque transfert
-            // notes format: "TRF#XXXX → NomAgent" (envoi) ou "TRF#XXXX ← NomAgent" (reception)
             String sql =
                     "SELECT t.id, t.reference, ABS(t.amount) AS montant, t.amount AS amount_raw, " +
                             "t.notes, t.agency_name, " +
-                            "t.client_name AS client_name, " +  // alias explicite
+                            "t.client_name AS client_name, " +
+                            "t.manual_commission, " +
                             "t.created_at, t.retrait_status, t.retrait_method " +
                             "FROM transactions t " +
                             "WHERE t.agent_id = ? AND t.type = 'TRANSFER' " +
@@ -346,15 +344,12 @@ public class TransfertController {
             for (var row : rows) {
                 Map<String, Object> m = new LinkedHashMap<>();
 
-                // Référence 4 chiffres
                 String ref = String.valueOf(row.getOrDefault("reference", "0000"));
                 if (ref.length() > 4) ref = ref.substring(ref.length() - 4);
 
-                // Sens : amount négatif = envoi, positif = réception
                 double amountRaw = ((Number) row.getOrDefault("amount_raw", 0)).doubleValue();
                 boolean isEnvoi  = amountRaw < 0;
 
-                // Devises depuis agency_name ("MRU→CFA")
                 String agencyName = String.valueOf(row.getOrDefault("agency_name", "MRU→MRU"));
                 String[] devises  = agencyName.contains("→")
                         ? agencyName.split("→") : new String[]{"MRU", "MRU"};
@@ -363,11 +358,16 @@ public class TransfertController {
 
                 double montant = Math.abs(amountRaw);
 
-                // Date formatée
                 Object createdAt = row.get("created_at");
                 String date = createdAt != null
                         ? createdAt.toString().substring(0, Math.min(16, createdAt.toString().length()))
                         : "—";
+
+                // ✅ Commission
+                double commissionVal = 0;
+                if (row.get("manual_commission") != null) {
+                    commissionVal = ((Number) row.get("manual_commission")).doubleValue();
+                }
 
                 m.put("id",            row.get("id"));
                 m.put("reference",     ref);
@@ -376,7 +376,8 @@ public class TransfertController {
                 m.put("devEnv",        devEnv);
                 m.put("devRet",        devRet);
                 m.put("sens",          isEnvoi ? "envoi" : "reception");
-                // ✅ Lire client_name (snake_case ou camelCase selon config JPA)
+                m.put("commission",    commissionVal);
+
                 String clientNameVal = null;
                 if (row.get("client_name") != null)
                     clientNameVal = row.get("client_name").toString();
@@ -399,7 +400,6 @@ public class TransfertController {
     }
 
     // ── POST /api/transferts/{id}/retrait ──────────────────────────────
-    // ✅ Retirer un montant reçu par transfert (en devise ou converti en MRU)
     @PostMapping("/{id}/retrait")
     @Transactional
     public ResponseEntity<?> retirerTransfert(
@@ -409,7 +409,6 @@ public class TransfertController {
         try {
             Long agentId = extractAgentId(authHeader);
 
-            // 1. Lire la transaction directement via JDBC (évite Hibernate session)
             var rows = jdbc.queryForList(
                     "SELECT t.id, t.amount, t.type, t.agency_name, t.retrait_status, t.agent_id " +
                             "FROM transactions t WHERE t.id = ?", id
@@ -419,7 +418,6 @@ public class TransfertController {
             }
             var row = rows.get(0);
 
-            // 2. Vérifications
             long txAgentId = ((Number) row.get("agent_id")).longValue();
             if (txAgentId != agentId) {
                 return ResponseEntity.badRequest().body(Map.of("message", "غير مصرح بهذه العملية"));
@@ -432,35 +430,27 @@ public class TransfertController {
                 return ResponseEntity.badRequest().body(Map.of("message", "تم سحب هذه العملية مسبقاً"));
             }
 
-            // 3. Paramètres
             String method  = (String) body.getOrDefault("method", "CASH");
             double montant = Double.parseDouble(body.getOrDefault("montant", txAmount).toString());
 
-            // 4. ✅ Devise reçue = directement depuis le body envoyé par le frontend
-            // Le frontend envoie : { devise: txToRetrait.devRet } ex: "CFA"
             String devRet = (String) body.getOrDefault("devise", "CFA");
             if (devRet == null || devRet.isBlank()) devRet = "CFA";
 
             log.info("📤 Retrait: agentId={} txId={} montant={} {} via {}", agentId, id, montant, devRet, method);
 
-            // 5. Calcul du montant MRU équivalent (avant de décider qui change)
             double montantMRU = montant;
             if (!"MRU".equals(devRet) && !"DEVISE".equals(method)) {
                 var tauxRows = jdbc.queryForList(
                         "SELECT tau FROM taux_change WHERE dev_env = 'MRU' AND dev_ret = ?", devRet
                 );
                 if (!tauxRows.isEmpty()) {
-                    double t = parseTaux((String) tauxRows.get(0).get("tau")); // 0.7
-                    if (t > 0) montantMRU = montant / t; // 70 / 0.7 = 100 MRU
+                    double t = parseTaux((String) tauxRows.get(0).get("tau"));
+                    if (t > 0) montantMRU = montant / t;
                 }
                 log.info("💱 {} {} → {} MRU", montant, devRet, montantMRU);
             }
 
-            // 6. ✅ Logique selon la méthode :
-            // DEVISE     → CFA diminue, MRU inchangé
-            // CASH/BANK  → MRU diminue, CFA INCHANGÉ (ne pas toucher la CFA)
             if ("DEVISE".equals(method)) {
-                // Retrait en devise pure → seulement la CFA diminue
                 jdbc.update(
                         "UPDATE agent_devise_balance SET balance = balance - ? WHERE agent_id = ? AND UPPER(devise) = UPPER(?)",
                         montant, agentId, devRet
@@ -468,7 +458,6 @@ public class TransfertController {
                 log.info("✅ DEVISE : solde {} - {}", devRet, montant);
 
             } else if ("CASH".equals(method)) {
-                // ✅ CASH MRU : seulement cash_balance MRU diminue — CFA INCHANGÉE
                 jdbc.update(
                         "UPDATE agents SET cash_balance = cash_balance - ?, total_balance = total_balance - ? WHERE id = ?",
                         montantMRU, montantMRU, agentId
@@ -476,7 +465,6 @@ public class TransfertController {
                 log.info("✅ CASH : cash_balance - {} MRU | solde {} INCHANGÉ", montantMRU, devRet);
 
             } else {
-                // ✅ BANK : cash_balance MRU diminue + solde agence augmente — CFA INCHANGÉE
                 jdbc.update(
                         "UPDATE agents SET cash_balance = cash_balance - ?, total_balance = total_balance - ? WHERE id = ?",
                         montantMRU, montantMRU, agentId
@@ -490,7 +478,6 @@ public class TransfertController {
                         method, montantMRU, montantMRU, devRet);
             }
 
-            // 8. Marquer la transaction comme retirée
             jdbc.update(
                     "UPDATE transactions SET retrait_status = 'DONE', retrait_method = ? WHERE id = ?",
                     method, id
@@ -512,7 +499,6 @@ public class TransfertController {
     }
 
     // ── POST /api/transferts/soldes/retirer ─────────────────────────────
-    // ✅ Retrait libre depuis le solde devise (sans lien à un transfert)
     @PostMapping("/soldes/retirer")
     public ResponseEntity<?> retirerSoldeLibre(
             @RequestBody Map<String, Object> body,
@@ -527,7 +513,6 @@ public class TransfertController {
                 return ResponseEntity.badRequest().body(Map.of("message", "المبلغ يجب أن يكون أكبر من 0"));
             }
 
-            // Vérifier solde disponible
             var soldeRows = jdbc.queryForList(
                     "SELECT balance FROM agent_devise_balance WHERE agent_id = ? AND UPPER(devise) = UPPER(?)",
                     agentId, devRet
@@ -541,7 +526,6 @@ public class TransfertController {
                 ));
             }
 
-            // Calcul MRU équivalent
             double montantMRU = montant;
             if (!"MRU".equals(devRet) && !"DEVISE".equals(method)) {
                 var tauxRows = jdbc.queryForList(
@@ -553,21 +537,17 @@ public class TransfertController {
                 }
             }
 
-            // Appliquer selon la méthode
             if ("DEVISE".equals(method)) {
-                // Retrait en devise → solde CFA diminue
                 jdbc.update(
                         "UPDATE agent_devise_balance SET balance = balance - ? WHERE agent_id = ? AND UPPER(devise) = UPPER(?)",
                         montant, agentId, devRet
                 );
             } else if ("CASH".equals(method)) {
-                // CASH MRU → cash_balance diminue, CFA inchangée
                 jdbc.update(
                         "UPDATE agents SET cash_balance = cash_balance - ?, total_balance = total_balance - ? WHERE id = ?",
                         montantMRU, montantMRU, agentId
                 );
             } else {
-                // BANK → cash_balance diminue + solde agence augmente, CFA inchangée
                 jdbc.update(
                         "UPDATE agents SET cash_balance = cash_balance - ?, total_balance = total_balance - ? WHERE id = ?",
                         montantMRU, montantMRU, agentId
@@ -595,7 +575,6 @@ public class TransfertController {
     }
 
     // ── POST /api/transferts/{id}/annuler ──────────────────────────────
-    // ✅ Annule un transfert et restaure les soldes des 2 agents
     @PostMapping("/{id}/annuler")
     public ResponseEntity<?> annulerTransfert(
             @PathVariable Long id,
@@ -603,17 +582,15 @@ public class TransfertController {
         try {
             Long agentId = extractAgentId(authHeader);
 
-            // 1. Lire la transaction via JDBC
             var rows = jdbc.queryForList(
                     "SELECT t.id, t.amount, t.type, t.agency_name, t.retrait_status, " +
-                            "t.agent_id, t.reference FROM transactions t WHERE t.id = ?", id
+                            "t.agent_id, t.reference, t.manual_commission FROM transactions t WHERE t.id = ?", id
             );
             if (rows.isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("message", "العملية غير موجودة"));
             }
             var row = rows.get(0);
 
-            // 2. Vérifications
             long txAgentId = ((Number) row.get("agent_id")).longValue();
             if (txAgentId != agentId) {
                 return ResponseEntity.badRequest().body(Map.of("message", "غير مصرح بهذه العملية"));
@@ -632,38 +609,45 @@ public class TransfertController {
             double amount    = Math.abs(((Number) row.get("amount")).doubleValue());
             String reference = (String) row.getOrDefault("reference", "");
 
-            // Devise depuis agency_name
             String agencyName = (String) row.getOrDefault("agency_name", "MRU→MRU");
             String[] parts = (agencyName != null && agencyName.contains("→"))
                     ? agencyName.split("→") : new String[]{"MRU","MRU"};
             String devEnv = parts[0].trim();
             String devRet = parts.length > 1 ? parts[1].trim() : "MRU";
 
-            // Signe : négatif = émetteur, positif = receveur
             double rawAmount = ((Number) row.get("amount")).doubleValue();
             boolean isEmetteur = rawAmount < 0;
 
-            // 3. Trouver la transaction jumelle (même référence, autre agent)
             var twinRows = jdbc.queryForList(
                     "SELECT id, agent_id, amount FROM transactions " +
                             "WHERE reference = ? AND id != ? AND type = 'TRANSFER'", reference, id
             );
 
-            // 4. ✅ Restaurer les soldes — JDBC pur
             if (isEmetteur) {
-                // Je suis l'émetteur → je récupère mon MRU
                 if ("MRU".equals(devEnv)) {
                     jdbc.update(
                             "UPDATE agents SET cash_balance = cash_balance + ?, total_balance = total_balance + ? WHERE id = ?",
                             amount, amount, agentId
                     );
                 }
-                // Diminuer le solde devise de l'émetteur (annuler l'ajout)
                 jdbc.update(
                         "UPDATE agent_devise_balance SET balance = balance + ? WHERE agent_id = ? AND UPPER(devise) = UPPER(?)",
                         amount, agentId, devEnv
                 );
-                // Diminuer le solde devise du receveur (annuler la réception)
+
+                // ✅ Annuler la commission si elle a été versée
+                double commAnnulee = 0;
+                if (row.get("manual_commission") != null) {
+                    commAnnulee = ((Number) row.get("manual_commission")).doubleValue();
+                }
+                if (commAnnulee > 0) {
+                    jdbc.update(
+                            "UPDATE agents SET cash_balance = cash_balance - ?, total_balance = total_balance - ? WHERE id = ?",
+                            commAnnulee, commAnnulee, agentId
+                    );
+                    log.info("💰 Commission annulée: -{} pour agent {}", commAnnulee, agentId);
+                }
+
                 if (!twinRows.isEmpty()) {
                     long twinAgentId = ((Number) twinRows.get(0).get("agent_id")).longValue();
                     double twinAmount = Math.abs(((Number) twinRows.get(0).get("amount")).doubleValue());
@@ -677,7 +661,6 @@ public class TransfertController {
                                 twinAmount, twinAmount, twinAgentId
                         );
                     }
-                    // Marquer la transaction jumelle comme annulée
                     jdbc.update(
                             "UPDATE transactions SET retrait_status = 'CANCEL' WHERE id = ?",
                             twinRows.get(0).get("id")
@@ -685,7 +668,6 @@ public class TransfertController {
                 }
             }
 
-            // 5. Marquer la transaction courante comme annulée
             jdbc.update(
                     "UPDATE transactions SET retrait_status = 'CANCEL' WHERE id = ?", id
             );
@@ -705,7 +687,6 @@ public class TransfertController {
 
     // ── Helpers ────────────────────────────────────────────────────────
 
-    // ✅ Extraire l'agentId depuis le header Authorization Bearer {token}
     private Long extractAgentId(String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             throw new RuntimeException("token_manquant");
@@ -716,7 +697,6 @@ public class TransfertController {
                 .getAgent().getId();
     }
 
-    // Mettre à jour ou créer le solde d'une devise pour un agent
     private void updateDeviseBalance(Agent agent, String devise, BigDecimal delta) {
         AgentDeviseBalance solde = deviseBalanceRepository
                 .findByAgentIdAndDevise(agent.getId(), devise)
@@ -729,7 +709,6 @@ public class TransfertController {
                 devise, agent.getFullName(), solde.getBalance().subtract(delta), solde.getBalance());
     }
 
-    // ✅ Parseur "3500/5000" → divise réellement : 3500/5000 = 0.7
     private double parseTaux(String tau) {
         if (tau == null || tau.isBlank()) return 1.0;
         try {
