@@ -143,8 +143,8 @@ public class TransfertController {
 
             // ✅ Commission du transfert
             double commission = 0;
-            if (body.containsKey("commission") && body.get("commission") != null) {
-                commission = Double.parseDouble(body.get("commission").toString());
+            if (body.containsKey("manualCommission") && body.get("manualCommission") != null) {
+                commission = Double.parseDouble(body.get("manualCommission").toString());
             }
             log.info("💰 Commission transfert: {} {}", commission, devEnv);
 
