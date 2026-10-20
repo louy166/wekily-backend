@@ -157,6 +157,17 @@ public class TransfertController {
             Agent emetteur = agentRepository.findById(idEmetteur)
                     .orElseThrow(() -> new RuntimeException("الوكيل المرسل غير موجود"));
 
+            // ✅ Vérifier que l'agent a le solde suffisant dans la devise d'envoi
+            Optional<AgentDeviseBalance> soldeOpt = deviseBalanceRepository
+                    .findByAgentIdAndDevise(idEmetteur, devEnv);
+            double soldeDisponible = soldeOpt.map(s -> s.getBalance().doubleValue()).orElse(0.0);
+            if (soldeDisponible < montantEnv) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "message", "الرصيد غير كافٍ في " + devEnv +
+                                " — متوفر: " + soldeDisponible + " " + devEnv
+                ));
+            }
+
             // 2. Trouver agent receveur par téléphone
             Agent receveur = agentRepository.findByPhone(telephone)
                     .orElseThrow(() -> new RuntimeException(
